@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Backlog Balancing Engine — Admin</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#f4f6f4; --surface:#ffffff; --ink:#13201e; --muted:#5d6b68;
+    --primary:#1f4d4a; --primary-soft:#e6efec; --border:#dce3e0;
+    --green:#3f8f5f; --amber:#c2871c; --red:#bd4630; --black:#1c1f24;
+    --green-s:#e8f2ec; --red-s:#f6e6e2; --amber-s:#f6eedd;
+    --mono:ui-monospace,"SF Mono","Cascadia Code","Roboto Mono",Menlo,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --serif:Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px;margin:0 auto;padding:20px}
+
+  /* session bar */
+  .session{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
+    background:var(--ink);color:#fff;border-radius:8px;padding:11px 15px;margin-bottom:14px}
+  .session .who{display:flex;align-items:center;gap:10px;font-size:13px}
+  .session select{font-family:inherit;font-size:13px;padding:5px 9px;border-radius:6px;border:1px solid #3a4744;
+    background:#1c2b28;color:#fff}
+  .rolebadge{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    padding:3px 9px;border-radius:20px}
+  .rolebadge.admin{background:#3f8f5f;color:#fff}
+  .rolebadge.registrar{background:#c2871c;color:#fff}
+  .rolebadge.judge{background:#4a6f9c;color:#fff}
+  .rolebadge.viewer{background:#5d6b68;color:#fff}
+  .demoflag{font-size:11px;color:#9fb4af}
+
+  .mast{border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:14px;
+    display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap}
+  .databar{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .savestatus{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    padding:3px 9px;border-radius:20px;background:var(--green-s);color:var(--green)}
+  .savestatus.saving{background:var(--amber-s);color:var(--amber)}
+  .savestatus.nostore{background:#eceef1;color:var(--muted)}
+  #printArea{display:none}
+  .mast h1{font-family:var(--serif);font-weight:600;font-size:23px;margin:0;letter-spacing:-.01em}
+  .mast .sub{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+
+  /* tabs */
+  .tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:14px;border-bottom:1px solid var(--border)}
+  .tab{font-family:inherit;font-size:13px;font-weight:500;padding:9px 15px;border:none;background:none;
+    color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tab.on{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
+  .tab .lock{font-size:10px;opacity:.6}
+
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:15px 16px;margin-bottom:14px}
+  .panel-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;gap:10px;flex-wrap:wrap}
+  .panel-h h2{font-size:12px;letter-spacing:.12em;text-transform:uppercase;margin:0}
+  .panel-h .hint{font-size:11.5px;color:var(--muted)}
+  .hide{display:none!important}
+
+  /* buttons */
+  button.btn{font-family:inherit;font-size:12.5px;font-weight:600;padding:7px 13px;border-radius:6px;cursor:pointer;border:1px solid var(--primary);background:var(--primary);color:#fff}
+  button.btn.ghost{background:none;color:var(--primary)}
+  button.btn.danger{border-color:var(--red);color:var(--red);background:none}
+  button.btn.danger:hover{background:var(--red);color:#fff}
+  button.btn:hover{filter:brightness(.96)}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;filter:none}
+  button.mini{font-family:inherit;font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:5px;cursor:pointer;
+    border:1px solid var(--border);background:var(--surface);color:var(--ink)}
+  button.mini:hover{border-color:var(--primary);color:var(--primary)}
+  button.mini.del:hover{border-color:var(--red);color:var(--red)}
+  button.mini:disabled{opacity:.35;cursor:not-allowed;border-color:var(--border);color:var(--muted)}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:11px}
+  .toolbar input[type=search],.toolbar select{font-family:inherit;font-size:12.5px;padding:7px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--ink)}
+  .toolbar input[type=search]{flex:1;min-width:150px}
+  .lockmsg{font-size:11.5px;color:var(--amber);background:var(--amber-s);padding:6px 11px;border-radius:6px;display:inline-flex;gap:6px;align-items:center}
+
+  /* tables */
+  .tablewrap{border:1px solid var(--border);border-radius:7px;overflow:hidden}
+  .scroll{max-height:420px;overflow:auto}
+  table{width:100%;border-collapse:collapse}
+  thead th{position:sticky;top:0;background:#f0f3f1;text-align:left;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:9px 11px;border-bottom:1px solid var(--border);font-weight:600;white-space:nowrap}
+  tbody td{padding:9px 11px;border-bottom:1px solid var(--border);font-size:12.5px;vertical-align:middle}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#fafbfa}
+  .cid{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .chip{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap}
+  .chip.open{background:var(--green-s);color:var(--green)}
+  .chip.disposed{background:#eceef1;color:#55606e}
+  .chip.lock{background:var(--green-s);color:var(--green)}
+  .chip.stra{background:var(--amber-s);color:var(--amber)}
+  .chip.mov{background:var(--primary-soft);color:var(--primary)}
+  .rowact{display:flex;gap:6px;justify-content:flex-end}
+
+  /* matrix */
+  .years{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px;margin-bottom:14px}
+  .yc{border:1px solid var(--border);border-radius:6px;padding:10px 12px}
+  .yc .yy{font-family:var(--mono);font-size:17px;font-weight:700}
+  .yc .ym{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.5}
+  .capbadge{display:inline-block;font-family:var(--mono);font-weight:700;font-size:12px;background:var(--primary-soft);color:var(--primary);padding:1px 8px;border-radius:4px}
+  .mwrap{overflow-x:auto}
+  table.matrix{border-collapse:collapse;width:100%;min-width:560px}
+  table.matrix th,table.matrix td{border:1px solid var(--border);text-align:center}
+  table.matrix thead th{background:#f0f3f1;font-size:11px;padding:8px 6px;font-weight:600;position:static}
+  table.matrix thead th .cap{display:block;font-family:var(--mono);font-size:10px;color:var(--primary);font-weight:700}
+  table.matrix tbody th{background:#f7f9f8;font-size:12px;padding:7px 10px;text-align:left;white-space:nowrap;position:static}
+  table.matrix tbody th small{color:var(--muted);font-weight:400}
+  .cell{font-family:var(--mono);font-weight:600;font-size:14px;padding:8px 6px;position:relative}
+  .cell.zero{color:#c3ccc9}.cell.ok{background:var(--green-s)}.cell.over{background:var(--red-s);color:var(--red)}
+  .cell.over::after{content:"!";position:absolute;top:2px;right:4px;font-size:9px}
+  table.matrix tfoot td,table.matrix tfoot th{background:#f0f3f1;font-family:var(--mono);font-weight:700;font-size:13px;padding:8px 6px;position:static}
+  .exc{border-left:3px solid var(--red);background:var(--red-s);padding:9px 12px;border-radius:0 6px 6px 0;font-size:12.5px;margin-bottom:7px}
+  .exc b{font-family:var(--mono)}
+  .noexc{color:var(--green);font-size:12.5px;font-weight:600}
+  .filtertag{font-size:11.5px;color:var(--muted)}
+
+  /* results */
+  .resgroup{border:1px solid var(--border);border-radius:7px;margin-bottom:11px;overflow:hidden}
+  .resgroup-h{display:flex;align-items:center;gap:10px;padding:9px 13px;background:#f0f3f1;border-bottom:1px solid var(--border)}
+  .resgroup-h .bid{font-family:var(--mono);font-weight:700;font-size:14px;background:var(--primary);color:#fff;border-radius:5px;padding:2px 9px}
+  .resgroup-h .bname{font-size:12.5px;color:var(--ink);font-weight:500}
+  .resgroup-h .bcount{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .resgroup-h .bcount b{color:var(--ink)}
+  .resgroup.empty .resgroup-h{background:var(--surface)}
+  .resnone{padding:10px 13px;font-size:12px;color:var(--muted);font-style:italic}
+  .restable{width:100%;border-collapse:collapse}
+  .restable td{padding:8px 13px;border-bottom:1px solid var(--border);font-size:12.5px;vertical-align:middle}
+  .restable tr:last-child td{border-bottom:none}
+  .restable tr:hover{background:#fafbfa}
+  .plabel{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap}
+  .plabel.p1{background:var(--green-s);color:var(--green)}
+  .plabel.p2{background:var(--primary-soft);color:var(--primary)}
+  .plabel.p3{background:var(--amber-s);color:var(--amber)}
+  .plabel.type{background:#eceef1;color:#55606e}
+  .resmoved{font-family:var(--mono);font-size:10.5px;color:var(--amber)}
+  .resstruck{font-size:11.5px;color:var(--muted);margin-top:4px}
+
+  /* targets */
+  .tcard{border:1px solid var(--border);border-radius:7px;padding:13px 15px;margin-bottom:11px}
+  .tcard-h{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .tcard-h .tt{font-weight:600;font-size:14px}
+  .tstatus{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:20px;white-space:nowrap}
+  .tstatus.met{background:var(--green-s);color:var(--green)}
+  .tstatus.progress{background:var(--primary-soft);color:var(--primary)}
+  .tstatus.overdue{background:var(--red-s);color:var(--red)}
+  .tscope{font-size:12.5px;color:var(--muted);margin:6px 0 9px;line-height:1.45}
+  .tscope b{color:var(--ink);font-family:var(--mono)}
+  .tbar{height:9px;background:#eef1ef;border-radius:6px;overflow:hidden}
+  .tbar-fill{height:100%;background:var(--primary);border-radius:6px;transition:width .3s}
+  .tbar-fill.met{background:var(--green)} .tbar-fill.overdue{background:var(--red)}
+  .tfoot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap}
+  .tprogtxt{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .tctl{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}
+  .tctl .tprog{width:62px;font-family:var(--mono);font-size:12.5px;padding:4px 7px;border:1px solid var(--border);border-radius:5px;color:var(--ink)}
+  .tnotes{font-size:12px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px dotted var(--border)}
+  .sellist{max-height:170px;overflow:auto;border:1px solid var(--border);border-radius:6px;margin-top:6px}
+  .selitem{display:flex;align-items:center;gap:8px;padding:6px 9px;font-size:12px;border-bottom:1px solid var(--border);cursor:pointer}
+  .selitem:last-child{border-bottom:none}
+  .selitem input{margin:0}
+
+  /* distribution */
+  .distlegend{display:flex;gap:16px;flex-wrap:wrap;margin:4px 0 12px;font-size:11.5px;color:var(--muted)}
+  .distlegend span{display:inline-flex;align-items:center;gap:6px}
+  .distlegend .sw{width:13px;height:13px;border-radius:3px;display:inline-block}
+  .distlegend .dash{width:16px;height:0;border-top:2px dashed var(--red);display:inline-block}
+  #distChart svg{width:100%;height:auto;display:block}
+  .adjnote{font-size:12.5px;color:var(--muted);line-height:1.5;margin-bottom:12px}
+  .adjnote b{color:var(--ink)}
+  .adjcols{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+  .adjcol{border:1px solid var(--border);border-radius:7px;padding:11px 13px}
+  .adjcol h4{margin:0 0 9px;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+  .adjcol.excess h4{color:var(--red)} .adjcol.deficit h4{color:var(--green)}
+  .adjrow{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px dotted var(--border);font-size:13px}
+  .adjrow:last-child{border-bottom:none}
+  .adjrow .bid{font-family:var(--mono);font-weight:700}
+  .adjrow .amt{font-family:var(--mono);font-weight:600;font-size:12px;padding:1px 8px;border-radius:20px}
+  .adjrow .amt.skip{background:var(--red-s);color:var(--red)}
+  .adjrow .amt.add{background:var(--green-s);color:var(--green)}
+  .seqwrap{border:1px solid var(--border);border-radius:7px;padding:11px 13px}
+  .seqwrap h4{margin:0 0 9px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .seqlist{display:flex;flex-wrap:wrap;gap:7px}
+  .seqchip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;border:1px solid var(--border);border-radius:20px;padding:3px 10px;background:var(--surface)}
+  .seqchip .n{font-family:var(--mono);color:var(--muted);font-size:10.5px}
+  .seqchip .from{font-family:var(--mono);color:var(--red);font-weight:600}
+  .seqchip .to{font-family:var(--mono);color:var(--green);font-weight:700}
+  .seqchip .arr{color:var(--muted)}
+  .adjbalanced{color:var(--green);font-weight:600;font-size:13px}
+  .pmwrap{overflow-x:auto;border:1px solid var(--border);border-radius:7px}
+  table.pmatrix{border-collapse:collapse;width:100%;min-width:520px}
+  table.pmatrix th,table.pmatrix td{border:1px solid var(--border);padding:0;text-align:center}
+  table.pmatrix thead th{background:#f0f3f1;font-family:var(--mono);font-size:11px;font-weight:700;padding:7px 6px}
+  table.pmatrix tbody th{background:#f7f9f8;font-family:var(--mono);font-weight:700;font-size:12px;padding:7px 10px;text-align:left}
+  table.pmatrix td input{width:54px;font-family:var(--mono);font-size:12.5px;padding:5px 4px;border:none;background:transparent;text-align:center;color:var(--ink)}
+  table.pmatrix td input:focus{outline:2px solid var(--primary);outline-offset:-2px;border-radius:4px}
+  table.pmatrix td input:disabled{color:var(--muted)}
+  table.pmatrix .ptotal{font-family:var(--mono);font-weight:700;font-size:12.5px;background:var(--primary-soft);color:var(--primary);padding:7px 8px}
+  table.pmatrix tfoot th,table.pmatrix tfoot .ptotal{background:#f0f3f1}
+  .trend{font-family:var(--mono);font-size:11.5px;font-weight:700;white-space:nowrap}
+  .trend.up{color:var(--amber)} .trend.down{color:var(--green)} .trend.flat{color:var(--muted);font-weight:400}
+  .twrow{display:grid;grid-template-columns:38px 1fr 84px;align-items:center;gap:10px;padding:5px 0}
+  .twrow .tl{font-family:var(--mono);font-weight:700;font-size:12.5px}
+  .twbar{height:18px;background:#eef1ef;border-radius:4px;overflow:hidden;display:flex}
+  .twbar .e{background:#b9c6c2;height:100%} .twbar .b{background:var(--primary);height:100%}
+  .twrow .tn{font-family:var(--mono);font-size:12px;color:var(--muted);text-align:right}
+  .twrow .tn b{color:var(--ink)}
+
+  /* settings */
+  .setrow{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:11px 0;border-bottom:1px dotted var(--border);flex-wrap:wrap}
+  .setrow:last-child{border-bottom:none}
+  .setrow .sl{font-size:13px;font-weight:500}
+  .setrow .sl small{display:block;font-weight:400;color:var(--muted);font-size:11.5px;margin-top:2px}
+  .seg-toggle{display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+  .seg-toggle button{font-family:inherit;font-size:12px;font-weight:500;padding:6px 12px;border:none;background:var(--surface);color:var(--muted);cursor:pointer}
+  .seg-toggle button.on{background:var(--primary);color:#fff}
+  .seg-toggle button:disabled{opacity:.4;cursor:not-allowed}
+  textarea{width:100%;font-family:inherit;font-size:13px;padding:9px;border:1px solid var(--border);border-radius:6px;resize:vertical;color:var(--ink)}
+  /* rules summary */
+  .rules{list-style:none;margin:0;padding:0;counter-reset:rule}
+  .rule{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+  .rule:last-child{border-bottom:none}
+  .rule .rn{counter-increment:rule;flex:0 0 auto;width:26px;height:26px;border-radius:50%;
+    background:var(--primary);color:#fff;font-family:var(--mono);font-weight:700;font-size:13px;
+    display:grid;place-items:center}
+  .rule.hard .rn{background:var(--red)}
+  .rule .rb{flex:1}
+  .rule .rt{font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .rule .rd{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.45}
+  .rtag{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:20px}
+  .rtag.hard{background:var(--red-s);color:var(--red)}
+  .rtag.soft{background:var(--primary-soft);color:var(--primary)}
+  .rtag.tie{background:var(--amber-s);color:var(--amber)}
+
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(19,32,30,.5);display:none;align-items:center;justify-content:center;padding:18px;z-index:50}
+  .overlay.show{display:flex}
+  .modal{background:var(--surface);border-radius:10px;width:100%;max-width:520px;max-height:90vh;overflow:auto;padding:20px 22px}
+  .modal h3{margin:0 0 4px;font-family:var(--serif);font-size:19px}
+  .modal .msub{font-size:11.5px;color:var(--muted);margin-bottom:16px}
+  .field{margin-bottom:13px}
+  .field label{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:5px;font-weight:600}
+  .field input,.field select{width:100%;font-family:inherit;font-size:13.5px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--ink)}
+  .field.inline{display:flex;align-items:center;gap:9px}
+  .field.inline input{width:auto}
+  .field.inline label{margin:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)}
+  .frow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .recwrap{display:flex;flex-wrap:wrap;gap:7px}
+  .recbox{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:12px;
+    border:1px solid var(--border);border-radius:5px;padding:4px 8px;cursor:pointer;background:var(--surface)}
+  .recbox input{margin:0}
+  .modal-act{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}
+  input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--primary);outline-offset:1px}
+
+  .foot{font-size:11px;color:var(--muted);margin-top:12px;line-height:1.55}
+  .foot b{color:var(--ink)}
+  @media(max-width:760px){.frow{grid-template-columns:1fr}}
+
+  /* print */
+  @media print{
+    body{background:#fff}
+    .wrap{max-width:none;padding:0}
+    .session,.databar,.tabs,.foot,.overlay,[data-panel]{display:none!important}
+    #printArea{display:block!important}
+    .pr-head{border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:14px}
+    .pr-head h1{font-family:var(--serif);font-size:20px;margin:0}
+    .pr-head .pr-sub{font-size:11px;color:#333;margin-top:3px}
+    .pr-meta{font-size:11px;color:#333;margin:10px 0;line-height:1.6}
+    .pr-sec{margin-bottom:14px;page-break-inside:avoid}
+    .pr-sec h3{font-size:12px;margin:0 0 6px;border-bottom:1px solid #999;padding-bottom:3px}
+    .pr-grp{margin-bottom:10px;page-break-inside:avoid}
+    .pr-grp .pr-gh{font-weight:700;font-size:12px;margin-bottom:3px}
+    table.pr{width:100%;border-collapse:collapse;font-size:11px}
+    table.pr th,table.pr td{border:1px solid #999;padding:4px 6px;text-align:left}
+    table.pr th{background:#eee}
+    .pr-matrix td,.pr-matrix th{text-align:center;font-family:var(--mono)}
+    .pr-un{color:#b00}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Session / role switcher -->
+  <div class="session">
+    <div class="who">
+      <span>Signed in as</span>
+      <select id="userSwitch" aria-label="Switch demo user"></select>
+      <span id="roleBadge" class="rolebadge admin">ADMIN</span>
+    </div>
+    <span class="demoflag">Demo session — switch users to see permissions change</span>
+  </div>
+
+  <div class="mast">
+    <div>
+      <h1>Backlog Balancing Engine</h1>
+      <div class="sub">High Court of the Maldives &middot; Administration &amp; Allocation</div>
+    </div>
+    <div class="databar">
+      <span id="saveStatus" class="savestatus">saved</span>
+      <button class="btn ghost" data-action="print">Print / PDF</button>
+      <button class="btn ghost" data-action="share">Share link</button>
+      <button class="btn ghost" data-action="export">Export</button>
+      <button class="btn ghost" data-action="import" id="importBtn">Import</button>
+      <input type="file" id="importFile" accept="application/json" style="display:none">
+    </div>
+  </div>
+
+  <!-- hidden printable report -->
+  <div id="printArea"></div>
+
+  <!-- Tabs -->
+  <div class="tabs" id="tabs">
+    <button class="tab on" data-tab="alloc">Allocation</button>
+    <button class="tab" data-tab="results">Results</button>
+    <button class="tab" data-tab="distribution">Distribution</button>
+    <button class="tab" data-tab="targets">Targets</button>
+    <button class="tab" data-tab="cases">Cases</button>
+    <button class="tab" data-tab="justices">Justices &amp; Sections</button>
+    <button class="tab" data-tab="users">Users &amp; Roles</button>
+    <button class="tab" data-tab="settings">Settings &amp; Rules</button>
+  </div>
+
+  <!-- ALLOCATION -->
+  <section data-panel="alloc">
+    <div class="panel">
+      <div class="panel-h"><h2>Per-year caps</h2><span class="hint" id="capHint"></span></div>
+      <div class="years" id="years"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><h2>Allocation matrix · section × year</h2><span class="hint">cell = open cases assigned · capped at the annual ceiling</span></div>
+      <div class="mwrap"><table class="matrix" id="matrix"></table></div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><h2>Unassignable cases</h2><span class="hint">no eligible section within cap + recusal limits</span></div>
+      <div id="exceptions"></div>
+    </div>
+  </section>
+
+  <!-- RESULTS -->
+  <section data-panel="results" class="hide">
+    <div class="panel">
+      <div class="panel-h"><h2>Allocation results · case-by-case</h2><span class="hint" id="resHint"></span></div>
+      <div class="toolbar">
+        <input type="search" id="resSearch" placeholder="Search case ID or type…">
+        <select id="resYear"><option value="">All years</option></select>
+        <span class="filtertag" id="resSummary"></span>
+      </div>
+      <div id="resGroups"></div>
+    </div>
+  </section>
+
+  <!-- DISTRIBUTION -->
+  <section data-panel="distribution" class="hide">
+    <div class="panel">
+      <div class="panel-h"><h2>Existing caseload before backlog</h2><span class="hint" id="priorLock"></span></div>
+      <p class="adjnote">The number of cases each section already held before the backlog was assigned, entered <b>per year</b> up to the current year. Editable — just counts, no case details. Each section's <b>Total</b> is summed automatically, and <b>Trend</b> shows the latest year-on-year change.</p>
+      <div class="toolbar">
+        <button class="btn ghost" data-action="add-prior-year-earlier" id="addEarlierBtn">+ Earlier year</button>
+        <button class="btn ghost" data-action="add-prior-year" id="addYearBtn">+ Later year</button>
+        <button class="btn ghost" data-action="remove-prior-year" id="removeYearBtn">− Remove last year</button>
+        <span class="filtertag" id="priorRange"></span>
+      </div>
+      <div id="priorGrid" class="priorgrid"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><h2>Total workload</h2><span class="hint">existing + backlog assigned (all years)</span></div>
+      <div class="distlegend">
+        <span><i class="sw" style="background:#b9c6c2"></i>Existing (before backlog)</span>
+        <span><i class="sw" style="background:var(--primary)"></i>Backlog assigned</span>
+      </div>
+      <div id="totalWorkload"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><h2>Backlog distribution &amp; results</h2><span class="hint" id="distHint"></span></div>
+      <div class="toolbar"><label style="font-size:12.5px;color:var(--muted)">Year&nbsp;</label><select id="distYear"></select></div>
+      <div class="distlegend">
+        <span><i class="sw" style="background:#b9c6c2"></i>Before — original presiding section</span>
+        <span><i class="sw" style="background:var(--primary)"></i>After — balanced</span>
+        <span><i class="dash"></i>Year average</span>
+      </div>
+      <div id="distChart"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><h2>New-case adjustment</h2><span class="hint">evening out future intake</span></div>
+      <div id="distAdjust"></div>
+    </div>
+  </section>
+
+  <!-- TARGETS -->
+  <section data-panel="targets" class="hide">
+    <div class="panel">
+      <div class="panel-h"><h2>Disposal targets</h2><span class="hint" id="targetSummary"></span></div>
+      <div class="toolbar">
+        <button class="btn" data-action="add-target" id="addTargetBtn">+ New target</button>
+        <span id="targetLock"></span>
+      </div>
+      <div id="targetList"></div>
+    </div>
+  </section>
+
+  <!-- CASES -->
+  <section data-panel="cases" class="hide">
+    <div class="panel">
+      <div class="panel-h"><h2>Case register</h2><span class="hint" id="caseCount"></span></div>
+      <div class="toolbar">
+        <input type="search" id="caseSearch" placeholder="Search ID or type…">
+        <select id="caseYear"><option value="">All years</option></select>
+        <button class="btn" data-action="add-case">+ Add case</button>
+        <button class="btn ghost" data-action="import-xlsx" id="xlsxBtn">Import .xlsx</button>
+        <input type="file" id="xlsxFile" accept=".xlsx,.xls" style="display:none">
+        <span id="caseLock"></span>
+      </div>
+      <div class="tablewrap"><div class="scroll">
+        <table><thead><tr>
+          <th>Case</th><th>Year</th><th>Presiding</th><th>Class</th><th style="text-align:right">Actions</th>
+        </tr></thead><tbody id="caseRows"></tbody></table>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- JUSTICES -->
+  <section data-panel="justices" class="hide">
+    <div class="panel">
+      <div class="panel-h"><h2>Justices &amp; section rotation</h2><span class="hint" id="justiceCount"></span></div>
+      <div class="toolbar">
+        <button class="btn" data-action="add-justice">+ Add justice</button>
+        <span id="justiceLock"></span>
+      </div>
+      <div class="tablewrap">
+        <table><thead><tr>
+          <th>Section</th><th>Name</th><th>Status</th><th>Open caseload</th><th style="text-align:right">Actions</th>
+        </tr></thead><tbody id="justiceRows"></tbody></table>
+      </div>
+      <p class="foot">Names are sample placeholders — edit each with the sitting justice. The active section count drives every cap (cap = cases ÷ active sections).</p>
+    </div>
+  </section>
+
+  <!-- USERS -->
+  <section data-panel="users" class="hide">
+    <div class="panel">
+      <div class="panel-h"><h2>Users &amp; roles</h2><span class="hint" id="userCount"></span></div>
+      <div class="toolbar">
+        <button class="btn" data-action="add-user">+ Add user</button>
+        <span id="userLock"></span>
+      </div>
+      <div class="tablewrap">
+        <table><thead><tr>
+          <th>Name</th><th>Username</th><th>Role</th><th>Can do</th><th style="text-align:right">Actions</th>
+        </tr></thead><tbody id="userRows"></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section data-panel="settings" class="hide">
+    <div class="panel">
+      <div class="panel-h"><h2>How cases are allocated — four rules, in order</h2></div>
+      <ol class="rules">
+        <li class="rule hard"><span class="rn"></span><div class="rb">
+          <div class="rt">Recusal <span class="rtag hard">hard limit</span></div>
+          <div class="rd">If a section is conflicted out of a case, it never receives that case — no exceptions.</div>
+        </div></li>
+        <li class="rule hard"><span class="rn"></span><div class="rb">
+          <div class="rt">Annual cap <span class="rtag hard">absolute</span></div>
+          <div class="rd">Each section's limit for a year = cases ÷ active sections. This ceiling is never exceeded — not even to keep a progressed case with its judge.</div>
+        </div></li>
+        <li class="rule"><span class="rn"></span><div class="rb">
+          <div class="rt">Type rotation <span class="rtag soft">spreads the load</span></div>
+          <div class="rd">A section doesn't get a second case of a type until every available section has one of that type.</div>
+        </div></li>
+        <li class="rule"><span class="rn"></span><div class="rb">
+          <div class="rt">Bench continuity <span class="rtag tie">tie-break</span></div>
+          <div class="rd">When sections are otherwise tied, the case stays with its presiding section first, then a section already on its bench.</div>
+        </div></li>
+      </ol>
+    </div>
+
+    <div class="panel">
+      <div class="panel-h"><h2>Settings you can change</h2><span class="hint" id="setLock"></span></div>
+      <div class="setrow">
+        <div class="sl">Cap rounding<small>how to round cases ÷ sections when it isn't exact</small></div>
+        <div class="seg-toggle" id="setRound">
+          <button data-v="ceil">Round up</button>
+          <button data-v="round">Nearest</button>
+          <button data-v="floor">Round down</button>
+        </div>
+      </div>
+      <div class="setrow">
+        <div class="sl">Disposable “dead” cases<small>set Stream-A cases aside before sharing the rest out</small></div>
+        <div class="seg-toggle" id="setTriage">
+          <button data-v="on">Set aside first</button>
+          <button data-v="off">Keep in the pool</button>
+        </div>
+      </div>
+      <div class="setrow">
+        <div class="sl">Progress vs type rotation<small>when keeping a progressed case with its judge would break type rotation, which wins?</small></div>
+        <div class="seg-toggle" id="setProgressFirst">
+          <button data-v="on">Progress wins</button>
+          <button data-v="off">Type rotation wins</button>
+        </div>
+      </div>
+      <div class="setrow" style="display:block">
+        <div class="sl" style="margin-bottom:7px">What counts as “significant progress”<small>the line that protects a case from being moved (used by Rule 2 &amp; the setting above)</small></div>
+        <textarea id="setProgress" rows="2"></textarea>
+      </div>
+      <div class="toolbar" style="margin-top:14px;margin-bottom:0">
+        <button class="btn ghost danger" data-action="reset-demo">Reset demo data</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="foot">
+    <b>Pilot build.</b> Data saves automatically to <b>this browser/device</b> (it persists across reloads once
+    deployed); use <b>Export</b> for a portable file, <b>Share link</b> to send a data snapshot, and <b>Print / PDF</b>
+    for a filed copy of the matrix and assignments. Two boundaries to keep in mind: this is one register <i>per device</i>,
+    not a single shared court-wide database, and the roles are a faithful model of admin control, <b>not</b> server-enforced
+    security — so treat this as a pilot, not the system of record for live cases. The engine applies all four rules in order:
+    <b>recusal</b> and the <b>annual cap</b> are hard limits; among eligible sections <b>type rotation</b> is the selector;
+    and <b>bench continuity</b> breaks ties. Progressed cases keep their presiding judge only while under cap; a case that
+    fits no eligible section is surfaced as unassignable. A shared multi-user database with real login is the next step.
+  </div>
+</div>
+
+<!-- modal -->
+<div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+
+<script>
+/* ===================== seed data ===================== */
+const JUDGE_SEATS=11;
+const BRANCHES=["Malé","Addu City","Kulhudhuffushi"];
+const BASE_TYPES=["Criminal Court appeal","Civil Court appeal","Family Court appeal","Magistrate Court appeal","Employment Tribunal appeal","Tax Tribunal appeal","Juvenile Court appeal","Drug Court appeal"];
+const DEFAULT_YEARS=[2021,2020,2019,2018];
+let YEARS=DEFAULT_YEARS.slice();
+const YEAR_N={2021:16,2020:12,2019:8,2018:6};
+const ROLES=["admin","registrar","judge","viewer"];
+const PERMS={
+  admin:{cases:1,justices:1,users:1,settings:1,statusOnly:1},
+  registrar:{cases:1,justices:0,users:0,settings:0,statusOnly:1},
+  judge:{cases:0,justices:0,users:0,settings:0,statusOnly:1},
+  viewer:{cases:0,justices:0,users:0,settings:0,statusOnly:0},
+};
+const ROLE_DESC={admin:"Everything",registrar:"Edit cases",judge:"View cases",viewer:"Read-only"};
+
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+
+function seedState(){
+  const rnd=mulberry32(20210411);
+  const pick=a=>a[Math.floor(rnd()*a.length)];
+  const justices=[];
+  for(let s=1;s<=JUDGE_SEATS;s++){
+    const py={}; DEFAULT_YEARS.forEach(y=>{py[y]=((s*3+(2021-y))%5);});
+    justices.push({seat:s,name:`Hon. Justice — B${s}`,active:true,priorYears:py});
+  }
+  const types=BASE_TYPES.slice();
+  const cases=[]; const seq={};
+  DEFAULT_YEARS.forEach(y=>{seq[y]=0;
+    for(let i=0;i<YEAR_N[y];i++){
+      const presiding=pick(justices).seat;
+      const bench=new Set([presiding]); while(bench.size<3) bench.add(pick(justices).seat);
+      const r=rnd(); const streamA=r<0.30;
+      const progressed=!streamA&&rnd()<0.32; const partHeard=progressed&&rnd()<0.35;
+      // sample recusals: ~18% of cases bar one or two sections (never the presiding judge)
+      const recusals=[];
+      if(rnd()<0.18){const pool=justices.map(j=>j.seat).filter(s=>s!==presiding);
+        recusals.push(pool[Math.floor(rnd()*pool.length)]);
+        if(rnd()<0.4){const s2=pool[Math.floor(rnd()*pool.length)];if(!recusals.includes(s2))recusals.push(s2);}}
+      seq[y]++;
+      cases.push({id:`HC-A/${y}/${String(seq[y]).padStart(3,"0")}`,year:y,type:pick(types),
+        presiding,bench:[...bench],streamA,progressed,partHeard,recusals});
+    }
+  });
+  const users=[
+    {id:"u1",name:"System Administrator",username:"admin",role:"admin"},
+    {id:"u2",name:"Court Registrar",username:"registrar",role:"registrar"},
+    {id:"u3",name:"Hon. Chief Judge",username:"chiefjudge",role:"judge"},
+    {id:"u4",name:"Public Viewer",username:"viewer",role:"viewer"},
+  ];
+  const settings={round:"ceil",triage:"on",progressFirst:"on",
+    progress:"A case is “significantly progressed” (P1) where the first substantive hearing has been held, evidence has been taken, or the matter is part-heard or reserved for judgment."};
+  const targets=[{id:"tg1",title:"Clear 2021 & earlier backlog",scopeType:"year",scopeValue:[2021,2020,2019,2018],
+    metric:"percent",amount:80,deadline:"2026-09-30",progress:5,
+    notes:"Resolve 80% of cases registered 2021 and earlier during this drive.",createdAt:new Date().toISOString()}];
+  const NOW_Y=new Date().getFullYear();
+  const priorYears=[]; for(let y=Math.min(2017,...DEFAULT_YEARS);y<=Math.max(NOW_Y,...DEFAULT_YEARS);y++) priorYears.push(y);
+  return {users,justices,cases,types,settings,targets,priorYears,currentUserId:"u1"};
+}
+const STORE_KEY="hcmv_balancing_v1";
+let HAS_STORE=true;
+function loadState(){
+  // 1) shared link (URL hash) takes priority for a one-time import
+  try{
+    const h=location.hash;
+    if(h.startsWith("#data=")){
+      const json=decodeURIComponent(escape(atob(h.slice(6))));
+      const obj=JSON.parse(json);
+      history.replaceState(null,"",location.pathname+location.search); // clean the URL
+      return obj;
+    }
+  }catch(e){/* fall through */}
+  // 2) device storage
+  try{
+    const raw=localStorage.getItem(STORE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){HAS_STORE=false;}
+  return seedState();
+}
+let S=loadState();
+function recomputeYears(){
+  const ys=[...new Set((S.cases||[]).map(c=>c.year))].filter(y=>Number.isFinite(y)).sort((a,b)=>b-a);
+  YEARS = ys.length?ys:DEFAULT_YEARS.slice();
+}
+recomputeYears();
+if(!Array.isArray(S.targets)) S.targets=[];
+S.justices.forEach(j=>{ if(!j.priorYears){ j.priorYears = (j.prior? {[YEARS[0]||2021]: j.prior} : {}); } delete j.prior; });
+if(!Array.isArray(S.priorYears)||!S.priorYears.length){
+  const NOW_Y=new Date().getFullYear(); const set=new Set([NOW_Y]);
+  S.justices.forEach(j=>Object.keys(j.priorYears||{}).forEach(y=>set.add(+y)));
+  YEARS.forEach(y=>set.add(y));
+  const lo=Math.min(...set), hi=Math.max(...set); S.priorYears=[];
+  for(let y=lo;y<=hi;y++) S.priorYears.push(y);
+}
+
+function persist(){
+  if(!HAS_STORE) return;
+  try{ localStorage.setItem(STORE_KEY,JSON.stringify(S)); flashSaved(); }
+  catch(e){ HAS_STORE=false; }
+}
+function flashSaved(){
+  const el=document.getElementById("saveStatus"); if(!el)return;
+  el.className="savestatus saving"; el.textContent="saving…";
+  clearTimeout(flashSaved._t);
+  flashSaved._t=setTimeout(()=>{el.className="savestatus";el.textContent="saved";},350);
+}
+
+/* ===================== helpers ===================== */
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+const curUser=()=>S.users.find(u=>u.id===S.currentUserId)||S.users[0];
+const curRole=()=>curUser().role;
+const can=sec=>!!PERMS[curRole()][sec];
+const canStatus=()=>!!PERMS[curRole()].statusOnly;
+const nameOf=seat=>{const j=S.justices.find(x=>x.seat===seat);return j?j.name:`B${seat} (removed)`;};
+const lockedCase=c=>c.progressed||c.partHeard;
+const priorOf=(j,y)=>+((j.priorYears||{})[y])||0;
+const priorTotal=j=>(S.priorYears||[]).reduce((a,y)=>a+priorOf(j,y),0);
+const classOf=c=>c.partHeard?["Part-heard / reserved","lock"]:c.progressed?["Progressed (P1)","lock"]:c.streamA?["Stream A","stra"]:["Movable","mov"];
+
+/* ===================== allocation engine ===================== */
+function roundCap(n,d){const v=n/d;return S.settings.round==="ceil"?Math.ceil(v):S.settings.round==="floor"?Math.max(1,Math.floor(v)):Math.max(1,Math.round(v));}
+function allocate(){
+  const active=S.justices.filter(j=>j.active).map(j=>j.seat);
+  const D=active.length||1;
+  const progressFirst=S.settings.progressFirst==="on";
+  const per={};
+  YEARS.forEach(y=>{
+    let cases=S.cases.filter(c=>c.year===y);
+    const triage=S.settings.triage==="on";
+    const struck=triage?cases.filter(c=>c.streamA):[];
+    if(triage) cases=cases.filter(c=>!c.streamA);
+    const n=cases.length;
+    const cap=Math.max(1,roundCap(n,D));            // Rule 1 — absolute ceiling
+    const load={}, tcount={};
+    active.forEach(s=>{load[s]=0;tcount[s]={};});
+    const place=[], unassigned=[];
+    const recused=(c,s)=>Array.isArray(c.recusals)&&c.recusals.includes(s);   // Rule 2
+    const eligible=(c,s)=>active.includes(s)&&!recused(c,s)&&load[s]<cap;       // cap + recusal
+    const tc=(s,t)=>tcount[s][t]||0;
+    const bump=(s,c)=>{load[s]++;tcount[s][c.type]=tc(s,c.type)+1;};
+
+    // Phase 1 — progressed/part-heard kept with presiding IF eligible (progress carve-out)
+    const deferred=[];
+    if(progressFirst){
+      cases.filter(lockedCase).forEach(c=>{
+        if(eligible(c,c.presiding)){
+          bump(c.presiding,c);
+          place.push({c,to:c.presiding,from:c.presiding,rule:"P1",moved:false,
+            label:c.partHeard?"Retained — part-heard / reserved (P1)":"Retained — significant progress (P1)"});
+        } else deferred.push(c);   // presiding at cap or recused → general pool
+      });
+    }
+
+    // Phase 2 — type rotation (selector) + continuity (tiebreak), within cap + recusal
+    const pool=(progressFirst?cases.filter(c=>!lockedCase(c)):cases.slice())
+      .concat(deferred).sort((a,b)=>a.id<b.id?-1:1);
+    pool.forEach(c=>{
+      const elig=active.filter(s=>eligible(c,s));
+      if(!elig.length){
+        const allRec=active.every(s=>recused(c,s));
+        unassigned.push({c,reason:allRec?"every active section is recused":"all eligible sections at the annual cap"});
+        return;
+      }
+      const benchSet=new Set(c.bench||[]);
+      elig.sort((a,b)=>{
+        const ta=tc(a,c.type),tb=tc(b,c.type); if(ta!==tb)return ta-tb;           // Rule 3 — type rotation
+        const pa=a===c.presiding?0:1, pb=b===c.presiding?0:1; if(pa!==pb)return pa-pb; // Rule 4 — presiding
+        const ba=benchSet.has(a)?0:1, bb=benchSet.has(b)?0:1; if(ba!==bb)return ba-bb;  // Rule 4 — bench
+        if(load[a]!==load[b])return load[a]-load[b];
+        return a-b;
+      });
+      const t=elig[0], wasPres=t===c.presiding, wasBench=benchSet.has(t), lk=lockedCase(c);
+      bump(t,c);
+      let rule,label;
+      if(wasPres){rule=lk?"P1":"P2";label=lk?"Retained — significant progress (P1)":"Retained — presiding judge (P2)";}
+      else if(wasBench){rule="P3";label=(lk?"Reassigned (cap) — ":"Assigned — ")+"prior bench member (P3)";}
+      else {rule="TYPE";label=(lk?"Reassigned (cap) — ":"Assigned — ")+"type rotation / balancing";}
+      place.push({c,to:t,from:c.presiding,rule,moved:t!==c.presiding,label});
+    });
+
+    struck.forEach(c=>place.push({c,to:null,from:c.presiding,rule:"STRA",moved:false,
+      label:"Triaged out — disposable on directions (Stream A)"}));
+
+    per[y]={n,cap,load,tcount,place,unassigned,struck:struck.length,
+      reassigned:place.filter(p=>p.moved).length,active};
+  });
+  return per;
+}
+
+/* ===================== renderers ===================== */
+let tab="alloc";
+function renderSession(){
+  $("userSwitch").innerHTML=S.users.map(u=>`<option value="${u.id}" ${u.id===S.currentUserId?"selected":""}>${esc(u.name)}</option>`).join("");
+  const r=curRole(); const b=$("roleBadge"); b.className="rolebadge "+r; b.textContent=r.toUpperCase();
+  // tab locks
+  document.querySelectorAll(".tab").forEach(t=>{
+    const sec={cases:"cases",justices:"justices",users:"users",settings:"settings"}[t.dataset.tab];
+    const locked = sec && !can(sec) && !(sec==="cases"&&canStatus());
+    t.querySelector(".lock")?.remove();
+    if(locked){const s=document.createElement("span");s.className="lock";s.textContent=" 🔒";t.appendChild(s);}
+  });
+  if(typeof syncImportBtn==="function") syncImportBtn();
+}
+function lockNote(sec){
+  if(can(sec)) return "";
+  return `<span class="lockmsg">🔒 ${curRole()} role is read-only here — sign in as Administrator to edit</span>`;
+}
+
+function renderAlloc(){
+  const res=allocate();
+  const D=res[2021].active.length;
+  $("capHint").textContent=`cap = cases ÷ ${D} active sections (${S.settings.round==="ceil"?"rounded up":S.settings.round==="floor"?"rounded down":"nearest"}) · absolute ceiling · ${S.settings.triage==="on"?"Stream A triaged out":"full cohort"}`;
+  $("years").innerHTML=YEARS.map(y=>{const r=res[y];
+    return `<div class="yc"><div class="yy">${y}</div><div class="ym">${r.n} to balance${S.settings.triage==="on"&&r.struck?` (+${r.struck} struck)`:""}<br>cap / section <span class="capbadge">${r.cap}</span><br>${r.reassigned} reassigned${r.unassigned.length?` · <b style="color:var(--red)">${r.unassigned.length} unassignable</b>`:""}</div></div>`;
+  }).join("");
+  // matrix
+  const active=res[2021].active;
+  let head=`<thead><tr><th>Section</th>`+YEARS.map(y=>`<th>${y}<span class="cap">cap ${res[y].cap}</span></th>`).join("")+`<th>Total</th></tr></thead>`;
+  const totals={};YEARS.forEach(y=>totals[y]=0);let grand=0;let body="<tbody>";
+  active.forEach(s=>{let rt=0;const cells=YEARS.map(y=>{const v=res[y].load[s],cap=res[y].cap;rt+=v;totals[y]+=v;const cls=v===0?"zero":(v>cap?"over":(v<=cap?"ok":""));return `<td class="cell ${cls}">${v}</td>`;}).join("");grand+=rt;
+    body+=`<tr><th>B${s}<br><small>${esc(nameOf(s))}</small></th>${cells}<td class="cell">${rt}</td></tr>`;});
+  body+="</tbody>";
+  let foot=`<tfoot><tr><th>Total</th>`+YEARS.map(y=>`<td>${totals[y]}</td>`).join("")+`<td>${grand}</td></tr></tfoot>`;
+  $("matrix").innerHTML=head+body+foot;
+  // unassignable
+  const all=[];YEARS.forEach(y=>res[y].unassigned.forEach(u=>all.push({y,...u})));
+  $("exceptions").innerHTML=all.length?all.map(u=>`<div class="exc">${esc(u.c.id)} · ${u.y} · ${esc(u.c.type)}: <b>cannot be placed</b> — ${u.reason}. Raise the annual cap, add a section, or review the recusals before this case can be allocated.</div>`).join(""):`<div class="noexc">✓ Every case placed within the annual cap and all recusal limits.</div>`;
+}
+
+function renderResults(){
+  const res=allocate();
+  const q=($("resSearch").value||"").toLowerCase(), fy=$("resYear").value;
+  const active=S.justices.filter(j=>j.active).map(j=>j.seat);
+  // collect placements by section
+  const bySec={}; active.forEach(s=>bySec[s]=[]);
+  let assigned=0,reassigned=0,struck=0;
+  const unassigned=[];
+  YEARS.forEach(y=>res[y].place.forEach(p=>{
+    if(p.rule==="STRA"){struck++;return;}
+    if(p.to==null) return;
+    assigned++; if(p.moved) reassigned++;
+    if(!bySec[p.to]) bySec[p.to]=[];
+    bySec[p.to].push({...p,year:y});
+  }));
+  YEARS.forEach(y=>res[y].unassigned.forEach(u=>unassigned.push({...u,year:y})));
+
+  const match=p=>(!fy||String(p.year)===fy)&&(!q||(p.c.id+p.c.type).toLowerCase().includes(q));
+  $("resHint").textContent=`${active.length} sections · ${S.settings.triage==="on"?"Stream A triaged out":"full cohort"}`;
+  $("resSummary").textContent=`${assigned} assigned · ${reassigned} reassigned · ${struck} struck · ${unassigned.length} unassignable`;
+
+  const rule2cls=r=>r==="P1"?"p1":r==="P2"?"p2":r==="P3"?"p3":"type";
+  let html=active.sort((a,b)=>a-b).map(s=>{
+    const list=bySec[s].filter(match).sort((a,b)=>a.year-b.year||(a.c.id<b.c.id?-1:1));
+    const rows=list.map(p=>{
+      const [cl,ccls]=classOf(p.c);
+      return `<tr>
+        <td><div>${esc(p.c.type)}</div><div class="cid">${p.c.id} · ${p.year}</div></td>
+        <td><span class="chip ${ccls}">${cl}</span></td>
+        <td><span class="plabel ${rule2cls(p.rule)}">${esc(p.label)}</span>${p.moved?` <div class="resmoved">moved from B${p.from}</div>`:""}</td>
+      </tr>`;}).join("");
+    return `<div class="resgroup${list.length?"":" empty"}">
+      <div class="resgroup-h"><span class="bid">B${s}</span><span class="bname">${esc(nameOf(s))}</span>
+        <span class="bcount"><b>${list.length}</b> case${list.length===1?"":"s"}</span></div>
+      ${list.length?`<table class="restable">${rows}</table>`:`<div class="resnone">— no cases assigned${(q||fy)?" (under current filter)":""} —</div>`}
+    </div>`;
+  }).join("");
+
+  const un=unassigned.filter(match);
+  if(un.length){
+    html+=`<div class="resgroup"><div class="resgroup-h"><span class="bid" style="background:var(--red)">!</span>
+      <span class="bname">Unassignable — no eligible section</span><span class="bcount"><b>${un.length}</b></span></div>
+      <table class="restable">${un.map(u=>`<tr><td><div>${esc(u.c.type)}</div><div class="cid">${u.c.id} · ${u.year}</div></td>
+        <td colspan="2" style="color:var(--red)">${u.reason}</td></tr>`).join("")}</table></div>`;
+  }
+  if(struck&&S.settings.triage==="on") html+=`<div class="resstruck">+ ${struck} Stream-A case${struck===1?"":"s"} triaged out before allocation (not assigned to any section).</div>`;
+  $("resGroups").innerHTML=html;
+}
+
+function renderCases(){
+  const q=$("caseSearch").value.toLowerCase(),fy=$("caseYear").value;
+  let rows=S.cases.slice().sort((a,b)=>a.id<b.id?-1:1);
+  if(fy) rows=rows.filter(c=>String(c.year)===fy);
+  if(q) rows=rows.filter(c=>(c.id+c.type).toLowerCase().includes(q));
+  $("caseCount").textContent=rows.length+" of "+S.cases.length+" cases";
+  $("caseLock").innerHTML=lockNote("cases");
+  const full=can("cases");
+  $("caseRows").innerHTML=rows.map(c=>{
+    const [cl,cls]=classOf(c);
+    return `<tr>
+      <td><div>${esc(c.type)}</div><div class="cid">${c.id}</div></td>
+      <td class="cid">${c.year}</td>
+      <td>${esc(nameOf(c.presiding))}</td>
+      <td><span class="chip ${cls}">${cl}</span>${(c.recusals&&c.recusals.length)?` <span class="chip" style="background:var(--red-s);color:var(--red)" title="recused sections: ${c.recusals.join(", ")}">⚠ ${c.recusals.length} recused</span>`:""}</td>
+      <td><div class="rowact">
+        <button class="mini" data-action="edit-case" data-id="${c.id}" ${full?"":"disabled"}>Edit</button>
+        <button class="mini del" data-action="del-case" data-id="${c.id}" ${full?"":"disabled"}>Delete</button>
+      </div></td></tr>`;
+  }).join("")||`<tr><td colspan="5" style="text-align:center;padding:22px;color:var(--muted)">No cases match.</td></tr>`;
+}
+
+function renderJustices(){
+  const res=allocate();const load={};
+  S.justices.forEach(j=>load[j.seat]=0);
+  S.cases.forEach(c=>{if(load[c.presiding]!==undefined)load[c.presiding]++;});
+  $("justiceCount").textContent=S.justices.filter(j=>j.active).length+" active of "+S.justices.length+" sections";
+  $("justiceLock").innerHTML=lockNote("justices");
+  const ed=can("justices");
+  $("justiceRows").innerHTML=S.justices.slice().sort((a,b)=>a.seat-b.seat).map(j=>`<tr>
+    <td class="cid">B${j.seat}</td>
+    <td>${esc(j.name)}</td>
+    <td><span class="chip ${j.active?"open":"disposed"}">${j.active?"active":"inactive"}</span></td>
+    <td class="cid">${load[j.seat]||0} cases (presiding)</td>
+    <td><div class="rowact">
+      <button class="mini" data-action="edit-justice" data-id="${j.seat}" ${ed?"":"disabled"}>Edit</button>
+      <button class="mini del" data-action="del-justice" data-id="${j.seat}" ${ed?"":"disabled"}>Delete</button>
+    </div></td></tr>`).join("");
+}
+
+function renderUsers(){
+  $("userCount").textContent=S.users.length+" users";
+  $("userLock").innerHTML=lockNote("users");
+  const ed=can("users");
+  $("userRows").innerHTML=S.users.map(u=>`<tr>
+    <td>${esc(u.name)}${u.id===S.currentUserId?' <span class="cid">(you)</span>':""}</td>
+    <td class="cid">${esc(u.username)}</td>
+    <td><span class="rolebadge ${u.role}" style="font-size:9.5px">${u.role.toUpperCase()}</span></td>
+    <td class="cid">${ROLE_DESC[u.role]}</td>
+    <td><div class="rowact">
+      <button class="mini" data-action="edit-user" data-id="${u.id}" ${ed?"":"disabled"}>Edit</button>
+      <button class="mini del" data-action="del-user" data-id="${u.id}" ${ed&&S.users.length>1?"":"disabled"}>Delete</button>
+    </div></td></tr>`).join("");
+}
+
+function renderSettings(){
+  const ed=can("settings");
+  $("setLock").innerHTML=ed?"":'🔒 admin only';
+  [["setRound","round"],["setTriage","triage"],["setProgressFirst","progressFirst"]].forEach(([id,key])=>{
+    $(id).querySelectorAll("button").forEach(b=>{b.classList.toggle("on",b.dataset.v===S.settings[key]);b.disabled=!ed;});
+  });
+  $("setProgress").value=S.settings.progress;$("setProgress").disabled=!ed;
+  document.querySelector('[data-action="reset-demo"]').disabled=!ed;
+}
+
+function renderAll(){
+  syncYearFilters();
+  renderSession();renderAlloc();renderResults();renderDistribution();renderTargets();renderCases();renderJustices();renderUsers();renderSettings();
+  const xb=$("xlsxBtn"); if(xb) xb.disabled=!can("cases");
+  persist();
+  if(!HAS_STORE){const el=$("saveStatus");if(el){el.className="savestatus nostore";el.textContent="not saved (preview)";el.title="Device storage is unavailable here; export to a file instead. Persists once deployed.";}}
+}
+
+/* ===================== targets ===================== */
+function scopeCases(t){
+  const cs=S.cases;
+  switch(t.scopeType){
+    case "all": return cs;
+    case "year": {const ys=(Array.isArray(t.scopeValue)?t.scopeValue:[t.scopeValue]).map(Number); return cs.filter(c=>ys.includes(c.year));}
+    case "section": return cs.filter(c=>c.presiding===+t.scopeValue);
+    case "case": return cs.filter(c=>c.id===t.scopeValue);
+    case "selected": return cs.filter(c=>(t.scopeValue||[]).includes(c.id));
+    default: return [];
+  }
+}
+function targetGoal(t){const n=scopeCases(t).length;return t.metric==="percent"?Math.max(0,Math.round((t.amount/100)*n)):+t.amount;}
+function targetStatus(t){
+  const goal=targetGoal(t);
+  if(goal>0&&t.progress>=goal) return {key:"met",label:"Met"};
+  if(t.deadline){const d=new Date(t.deadline+"T23:59:59"),now=new Date();
+    if(now>d) return {key:"overdue",label:"Overdue"};
+    const days=Math.ceil((d-now)/86400000); return {key:"progress",label:days+" day"+(days===1?"":"s")+" left"};}
+  return {key:"progress",label:"In progress"};
+}
+function scopeLabel(t){
+  switch(t.scopeType){
+    case "all":return "All cases";
+    case "year": {const ys=(Array.isArray(t.scopeValue)?t.scopeValue:[t.scopeValue]).filter(v=>v!=null).map(Number).sort((a,b)=>b-a); return ys.length>1?("Years "+ys.join(", ")):("Year "+(ys[0]??""));}
+    case "section":return "Section B"+t.scopeValue;
+    case "case":return "Case "+esc(String(t.scopeValue||""));
+    case "selected":return ((t.scopeValue||[]).length)+" selected cases";
+    default:return "";
+  }
+}
+function renderTargets(){
+  const ed=can("cases");
+  $("targetLock").innerHTML=ed?"":'<span class="lockmsg">🔒 view only — sign in as Administrator or Registrar to manage targets</span>';
+  const ab=$("addTargetBtn"); if(ab) ab.disabled=!ed;
+  const ts=S.targets||[];
+  let met=0,over=0,prog=0;
+  ts.forEach(t=>{const k=targetStatus(t).key;if(k==="met")met++;else if(k==="overdue")over++;else prog++;});
+  $("targetSummary").textContent=ts.length?`${ts.length} target${ts.length===1?"":"s"} · ${met} met · ${prog} in progress · ${over} overdue`:"";
+  if(!ts.length){$("targetList").innerHTML=`<div class="resnone" style="border:1px solid var(--border);border-radius:7px">No targets yet.${ed?' Click “New target” to create one.':''}</div>`;return;}
+  $("targetList").innerHTML=ts.map(t=>{
+    const n=scopeCases(t).length, goal=targetGoal(t), pct=goal?Math.min(100,Math.round(100*t.progress/goal)):0, st=targetStatus(t);
+    return `<div class="tcard">
+      <div class="tcard-h"><div class="tt">${esc(t.title)}</div><span class="tstatus ${st.key}">${st.label}</span></div>
+      <div class="tscope">${scopeLabel(t)} &middot; goal: resolve <b>${goal}</b>${t.metric==="percent"?` (${t.amount}%)`:""} of <b>${n}</b> in scope${t.deadline?` by <b>${t.deadline}</b>`:""}</div>
+      <div class="tbar"><div class="tbar-fill ${st.key}" style="width:${pct}%"></div></div>
+      <div class="tfoot"><span class="tprogtxt">${t.progress}/${goal} resolved (${pct}%)</span>
+        ${ed?`<span class="tctl">resolved <input class="tprog" type="number" min="0" data-id="${t.id}" value="${t.progress}">
+          <button class="mini" data-action="edit-target" data-id="${t.id}">Edit</button>
+          <button class="mini del" data-action="del-target" data-id="${t.id}">Delete</button></span>`:""}
+      </div>
+      ${t.notes?`<div class="tnotes">${esc(t.notes)}</div>`:""}
+    </div>`;
+  }).join("");
+}
+
+let _selSet=new Set(), _yrSet=new Set();
+function renderScopeValue(type,t){
+  const wrap=$("t_scopeVal"); if(!wrap)return;
+  const cur=(t&&t.scopeType===type)?t.scopeValue:null;
+  if(type==="all"){wrap.innerHTML=`<label>Scope</label><input value="Every case in the register" disabled>`;}
+  else if(type==="year"){
+    _yrSet=new Set((Array.isArray(cur)?cur:(cur!=null?[cur]:[])).map(Number));
+    wrap.innerHTML=`<label>Years (<span id="t_yrcount">${_yrSet.size}</span> selected)</label>
+      <div class="recwrap">${YEARS.map(y=>`<label class="recbox"><input type="checkbox" value="${y}" ${_yrSet.has(y)?"checked":""} onchange="toggleYr(${y},this.checked)"> ${y}</label>`).join("")}</div>`;
+  }
+  else if(type==="section"){wrap.innerHTML=`<label>Section</label><select id="t_sv">${S.justices.filter(j=>j.active).sort((a,b)=>a.seat-b.seat).map(j=>`<option value="${j.seat}" ${cur==j.seat?"selected":""}>B${j.seat} — ${esc(j.name)}</option>`).join("")}</select>`;}
+  else if(type==="case"){wrap.innerHTML=`<label>Case ID</label><input id="t_sv" list="t_caselist" value="${cur?esc(String(cur)):""}" placeholder="type to search a case ID" autocomplete="off"><datalist id="t_caselist">${S.cases.slice(0,3000).map(c=>`<option value="${esc(c.id)}"></option>`).join("")}</datalist>`;}
+  else if(type==="selected"){wrap.innerHTML=`<label>Selected cases (<span id="t_selcount">${_selSet.size}</span> chosen)</label><input id="t_selsearch" placeholder="search to add…" autocomplete="off" oninput="renderSelList(this.value)"><div id="t_sellist" class="sellist"></div>`;renderSelList("");}
+}
+function toggleYr(y,on){if(on)_yrSet.add(+y);else _yrSet.delete(+y);const n=$("t_yrcount");if(n)n.textContent=_yrSet.size;}
+function renderSelList(q){
+  const box=$("t_sellist"); if(!box)return; q=(q||"").toLowerCase();
+  let list=S.cases; if(q) list=list.filter(c=>(c.id+" "+c.type).toLowerCase().includes(q));
+  const shown=list.slice(0,150);
+  box.innerHTML=shown.map(c=>`<label class="selitem"><input type="checkbox" value="${esc(c.id)}" ${_selSet.has(c.id)?"checked":""} onchange="toggleSel(this.value,this.checked)"> ${esc(c.id)} &middot; B${c.presiding} &middot; ${c.year}</label>`).join("")
+    +(list.length>150?`<div style="padding:6px 9px;color:var(--muted);font-size:11.5px">+${list.length-150} more — narrow your search</div>`:"")
+    ||`<div style="padding:8px 9px;color:var(--muted);font-size:12px">no matches</div>`;
+}
+function toggleSel(id,on){if(on)_selSet.add(id);else _selSet.delete(id);const n=$("t_selcount");if(n)n.textContent=_selSet.size;}
+function targetModal(t){
+  const isNew=!t;
+  t=t||{id:"",title:"",scopeType:"all",scopeValue:null,metric:"count",amount:10,deadline:"",progress:0,notes:""};
+  _selSet=new Set(t.scopeType==="selected"&&Array.isArray(t.scopeValue)?t.scopeValue:[]);
+  openModal(`
+    <h3>${isNew?"Create target":"Edit target"}</h3>
+    <div class="msub">A disposal goal: how many cases to resolve, in what scope, by when.</div>
+    <div class="field"><label>Title</label><input id="t_title" value="${esc(t.title)}" placeholder="e.g. Clear 2021 backlog"></div>
+    <div class="frow">
+      <div class="field"><label>Applies to</label>
+        <select id="t_scope" onchange="renderScopeValue(this.value)">
+          <option value="all">All cases</option>
+          <option value="year">By year</option>
+          <option value="section">By section</option>
+          <option value="case">Individual case</option>
+          <option value="selected">Selected cases</option>
+        </select></div>
+      <div class="field" id="t_scopeVal"></div>
+    </div>
+    <div class="frow">
+      <div class="field"><label>Goal type</label>
+        <div class="seg-toggle" id="t_metric">
+          <button type="button" data-v="count">Number</button>
+          <button type="button" data-v="percent">Percent</button>
+        </div></div>
+      <div class="field"><label id="t_amountLab">${t.metric==="percent"?"Percent to resolve (%)":"Cases to resolve"}</label><input id="t_amount" type="number" min="0" value="${t.amount}"></div>
+    </div>
+    <div class="frow">
+      <div class="field"><label>By date</label><input id="t_deadline" type="date" value="${t.deadline||""}"></div>
+      <div class="field"><label>Resolved so far</label><input id="t_progress" type="number" min="0" value="${t.progress||0}"></div>
+    </div>
+    <div class="field"><label>Notes (optional)</label><input id="t_notes" value="${esc(t.notes||"")}"></div>
+    <div class="modal-act">
+      <button class="btn ghost" data-action="close">Cancel</button>
+      <button class="btn" data-action="save-target" data-id="${esc(t.id)}" data-new="${isNew}">${isNew?"Create target":"Save"}</button>
+    </div>`);
+  $("t_scope").value=t.scopeType;
+  renderScopeValue(t.scopeType,t);
+  $("t_metric").querySelectorAll("button").forEach(b=>b.classList.toggle("on",b.dataset.v===t.metric));
+  $("t_metric").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;
+    $("t_metric").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));
+    $("t_amountLab").textContent=b.dataset.v==="percent"?"Percent to resolve (%)":"Cases to resolve";});
+}
+function saveTarget(oldId,isNew){
+  const scopeType=$("t_scope").value; let scopeValue=null;
+  if(scopeType==="year") scopeValue=[..._yrSet];
+  else if(scopeType==="section") scopeValue=$("t_sv")?$("t_sv").value:null;
+  else if(scopeType==="case") scopeValue=$("t_sv")?$("t_sv").value.trim():"";
+  else if(scopeType==="selected") scopeValue=[..._selSet];
+  const metric=$("t_metric").querySelector(".on")?.dataset.v||"count";
+  const obj={title:$("t_title").value.trim()||"Untitled target",scopeType,scopeValue,metric,
+    amount:Math.max(0,parseInt($("t_amount").value||"0",10)||0),
+    deadline:$("t_deadline").value||"",
+    progress:Math.max(0,parseInt($("t_progress").value||"0",10)||0),
+    notes:$("t_notes").value.trim()};
+  if(isNew){obj.id="t"+Date.now();obj.createdAt=new Date().toISOString();S.targets.push(obj);}
+  else{const ex=S.targets.find(t=>t.id===oldId);if(ex)Object.assign(ex,obj);}
+  closeModal();renderAll();
+}
+
+/* ===================== distribution & new-case adjustment ===================== */
+function distYear(y){
+  const triage=S.settings.triage==="on";
+  let cohort=S.cases.filter(c=>c.year===y);
+  const struck=triage?cohort.filter(c=>c.streamA).length:0;
+  if(triage) cohort=cohort.filter(c=>!c.streamA);
+  const active=S.justices.filter(j=>j.active).map(j=>j.seat).sort((a,b)=>a-b);
+  const N=active.length||1;
+  const orig={},bal={}; active.forEach(s=>{orig[s]=0;bal[s]=0;});
+  cohort.forEach(c=>{if(orig[c.presiding]!==undefined)orig[c.presiding]++;});
+  const res=allocate()[y];
+  active.forEach(s=>bal[s]=res?res.load[s]:0);
+  const total=cohort.length;
+  const base=Math.floor(total/N), rem=total-base*N;
+  const order=active.slice().sort((a,b)=>orig[b]-orig[a]||a-b); // fair-share +1 goes to the heaviest originals
+  const target={}; order.forEach((s,i)=>target[s]=base+(i<rem?1:0));
+  const delta={}; active.forEach(s=>delta[s]=orig[s]-target[s]); // imbalance in the CURRENT backlog
+  return {y,active,N,orig,bal,target,delta,total,struck,avg:total/N};
+}
+function barChartSVG(d){
+  const W=720,H=250,padL=30,padR=10,padT=14,padB=40;
+  const iw=W-padL-padR, ih=H-padT-padB, secs=d.active;
+  const maxV=Math.max(1,...secs.map(s=>Math.max(d.orig[s],d.bal[s])),Math.ceil(d.avg));
+  const yS=v=>padT+ih-(v/maxV)*ih;
+  const gw=iw/Math.max(1,secs.length), bw=Math.min(15,gw/2.6);
+  let g="";
+  // baseline
+  g+=`<line x1="${padL}" y1="${padT+ih}" x2="${W-padR}" y2="${padT+ih}" stroke="#cfd8d5"/>`;
+  secs.forEach((s,i)=>{
+    const cx=padL+gw*i+gw/2, ox=cx-bw-1, bx=cx+1;
+    const oy=yS(d.orig[s]), by=yS(d.bal[s]), y0=padT+ih;
+    g+=`<rect x="${ox-bw}" y="${oy}" width="${bw}" height="${y0-oy}" fill="#b9c6c2" rx="1.5"/>`;
+    g+=`<rect x="${bx}" y="${by}" width="${bw}" height="${y0-by}" fill="#1f4d4a" rx="1.5"/>`;
+    g+=`<text x="${cx}" y="${y0+14}" font-size="10" fill="#5d6b68" text-anchor="middle" font-family="ui-monospace,monospace">B${s}</text>`;
+    if(d.bal[s]>0) g+=`<text x="${bx+bw/2}" y="${by-3}" font-size="9" fill="#1f4d4a" text-anchor="middle" font-family="ui-monospace,monospace">${d.bal[s]}</text>`;
+  });
+  // average line
+  const ay=yS(d.avg);
+  g+=`<line x1="${padL}" y1="${ay}" x2="${W-padR}" y2="${ay}" stroke="#bd4630" stroke-width="1.4" stroke-dasharray="5 4"/>`;
+  g+=`<text x="${W-padR}" y="${ay-4}" font-size="9.5" fill="#bd4630" text-anchor="end" font-family="ui-monospace,monospace">avg ${d.avg.toFixed(1)}</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Backlog distribution by section">${g}</svg>`;
+}
+function renderDistribution(){
+  // existing-caseload editable grid (per section, independent of year)
+  const ed=can("cases");
+  const pl=$("priorLock"); if(pl) pl.innerHTML=ed?"":'<span class="lockmsg">🔒 view only</span>';
+  const active=S.justices.filter(j=>j.active).sort((a,b)=>a.seat-b.seat);
+  const pyAsc=(S.priorYears||[]).slice().sort((a,b)=>a-b);
+  const yrs=pyAsc.slice().sort((a,b)=>b-a);
+  if($("priorRange")) $("priorRange").textContent = pyAsc.length?`years ${pyAsc[0]}–${pyAsc[pyAsc.length-1]}`:"";
+  if($("addYearBtn")) $("addYearBtn").disabled=!ed;
+  if($("addEarlierBtn")) $("addEarlierBtn").disabled=!ed;
+  if($("removeYearBtn")) $("removeYearBtn").disabled=!ed||pyAsc.length<=1;
+  const trendOf=j=>{ if(pyAsc.length<2) return null; const a=priorOf(j,pyAsc[pyAsc.length-2]), b=priorOf(j,pyAsc[pyAsc.length-1]); return b-a; };
+  const pg=$("priorGrid");
+  if(pg){
+    const head=`<tr><th>Section</th>${yrs.map(y=>`<th>${y}</th>`).join("")}<th>Total</th><th>Trend</th></tr>`;
+    const body=active.map(j=>{
+      const cells=yrs.map(y=>`<td><input class="priorin" type="number" min="0" data-seat="${j.seat}" data-year="${y}" value="${priorOf(j,y)}" ${ed?"":"disabled"}></td>`).join("");
+      const tr=trendOf(j);
+      const trendHTML = tr==null?'<span class="trend flat">—</span>'
+        : tr>0?`<span class="trend up">▲ ${tr}</span>` : tr<0?`<span class="trend down">▼ ${-tr}</span>` : '<span class="trend flat">no change</span>';
+      return `<tr><th>B${j.seat}</th>${cells}<td class="ptotal">${priorTotal(j)}</td><td>${trendHTML}</td></tr>`;
+    }).join("");
+    const foot=`<tr><th>Total</th>${yrs.map(y=>`<td class="ptotal">${active.reduce((a,j)=>a+priorOf(j,y),0)}</td>`).join("")}<td class="ptotal">${active.reduce((a,j)=>a+priorTotal(j),0)}</td><td></td></tr>`;
+    pg.innerHTML=`<div class="pmwrap"><table class="pmatrix"><thead>${head}</thead><tbody>${body}</tbody><tfoot>${foot}</tfoot></table></div>`;
+  }
+  // total workload = existing (all years) + backlog assigned across all years
+  const res=allocate(); const backlog={}; active.forEach(j=>backlog[j.seat]=0);
+  YEARS.forEach(y=>{const r=res[y]; if(r) r.active.forEach(s=>{if(backlog[s]!==undefined) backlog[s]+=r.load[s];});});
+  const maxTot=Math.max(1,...active.map(j=>priorTotal(j)+backlog[j.seat]));
+  const tw=$("totalWorkload");
+  if(tw) tw.innerHTML=active.map(j=>{const e=priorTotal(j),b=backlog[j.seat],t=e+b;
+    return `<div class="twrow"><span class="tl">B${j.seat}</span>
+      <div class="twbar"><div class="e" style="width:${100*e/maxTot}%"></div><div class="b" style="width:${100*b/maxTot}%"></div></div>
+      <span class="tn">${e}+${b}=<b>${t}</b></span></div>`;}).join("");
+
+  // year selector (years only)
+  const sel=$("distYear"); if(!sel)return;
+  const cur=sel.value; sel.innerHTML=YEARS.map(y=>`<option>${y}</option>`).join("");
+  if(YEARS.map(String).includes(cur)) sel.value=cur; else if(YEARS.length) sel.value=String(YEARS[0]);
+  const y=+sel.value; if(!Number.isFinite(y)){$("distChart").innerHTML="";$("distAdjust").innerHTML="";return;}
+  const d=distYear(y);
+  $("distHint").textContent=`${d.total} cases · ${d.N} sections · average ${d.avg.toFixed(1)} per section`+(d.struck?` · ${d.struck} Stream-A set aside`:"");
+  $("distChart").innerHTML=barChartSVG(d);
+
+  // adjustment
+  const excess=d.active.filter(s=>d.delta[s]>0).map(s=>({s,n:d.delta[s]}));
+  const deficit=d.active.filter(s=>d.delta[s]<0).map(s=>({s,n:-d.delta[s]}));
+  const K=excess.reduce((a,e)=>a+e.n,0);
+  const skipSlots=[],needSlots=[];
+  d.active.forEach(s=>{for(let k=0;k<Math.max(0,d.delta[s]);k++)skipSlots.push(s);});
+  d.active.forEach(s=>{for(let k=0;k<Math.max(0,-d.delta[s]);k++)needSlots.push(s);});
+  const pairs=skipSlots.map((s,i)=>({from:s,to:needSlots[i]}));
+
+  if(K===0){
+    $("distAdjust").innerHTML=`<div class="adjbalanced">✓ For ${y}, every section is already at the fair share (${d.avg.toFixed(1)}). No new-case adjustment is needed.</div>`;
+    return;
+  }
+  const note=`<div class="adjnote">In ${y}'s current backlog, sections above the fair share of <b>${d.avg.toFixed(1)}</b> hold more than those below it. To even this out through future intake rather than moving old cases, each <b>above-average</b> section is <b>skipped</b> one case at a time in the new-case rotation, and that turn is given to a <b>below-average</b> section — repeated until the excess of <b>${K}</b> case${K===1?"":"s"} is absorbed.</div>`;
+  const cols=`<div class="adjcols">
+    <div class="adjcol excess"><h4>Above average — skipped (${excess.length})</h4>${excess.map(e=>`<div class="adjrow"><span class="bid">B${e.s}</span><span class="amt skip">skip ${e.n}</span></div>`).join("")}</div>
+    <div class="adjcol deficit"><h4>Below average — topped up (${deficit.length})</h4>${deficit.map(e=>`<div class="adjrow"><span class="bid">B${e.s}</span><span class="amt add">+${e.n} new</span></div>`).join("")}</div>
+  </div>`;
+  const show=pairs.slice(0,40);
+  const seq=`<div class="seqwrap"><h4>Incoming-case redirection (${pairs.length})</h4><div class="seqlist">${show.map((p,i)=>`<span class="seqchip"><span class="n">${i+1}</span><span class="from">skip B${p.from}</span><span class="arr">→</span><span class="to">B${p.to}</span></span>`).join("")}${pairs.length>40?`<span class="seqchip">+${pairs.length-40} more</span>`:""}</div></div>`;
+  $("distAdjust").innerHTML=note+cols+seq;
+}
+
+/* ===================== data actions: export / import / share / print ===================== */
+function exportData(){
+  const blob=new Blob([JSON.stringify(S,null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+  a.download="hcmv-allocation-"+new Date().toISOString().slice(0,10)+".json";
+  document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(a.href);
+}
+function importData(file){
+  const r=new FileReader();
+  r.onload=()=>{try{const obj=JSON.parse(r.result);
+    if(!obj||!obj.cases||!obj.justices){alert("That file doesn't look like an allocation export.");return;}
+    S=obj;recomputeYears();renderAll();switchTab("alloc");
+  }catch(e){alert("Could not read that file: "+e.message);}};
+  r.readAsText(file);
+}
+function importXlsx(file){
+  if(typeof XLSX==="undefined"){alert("The spreadsheet reader didn't load (needs an internet connection the first time).");return;}
+  const r=new FileReader();
+  r.onload=()=>{try{
+    const wb=XLSX.read(new Uint8Array(r.result),{type:"array"});
+    // prefer a sheet named "Cases", else the first non-empty sheet
+    let sheetName=wb.SheetNames.find(n=>/case/i.test(n))||wb.SheetNames[0];
+    const ws=wb.Sheets[sheetName];
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1,blankrows:false});
+    if(!rows.length){alert("That sheet looks empty.");return;}
+    const header=rows[0].map(h=>String(h==null?"":h).trim());
+    const lower=header.map(h=>h.toLowerCase());
+    const col=re=>lower.findIndex(h=>re.test(h));
+    const idC=col(/^case\s*id$|^id$|case\s*number|^case$/), presC=col(/presiding/);
+    const perCase = idC>-1 || presC>-1;
+
+    if(perCase){
+      const yC=col(/year/), tyC=col(/class|type/), beC=col(/bench/), prC=col(/progress/), saC=col(/stream/), reC=col(/recus|conflict/);
+      const seatsFrom=v=>String(v==null?"":v).split(/[,;/ ]+/).map(x=>{const m=x.match(/(\d+)/);return m?+m[1]:null;}).filter(x=>x);
+      const seatOne=v=>{const m=String(v==null?"":v).match(/(\d+)/);return m?+m[1]:null;};
+      const cases=[]; const seats=new Set(); const typeSet=new Set(); let auto=0;
+      for(let i=1;i<rows.length;i++){
+        const row=rows[i]||[];
+        const pres=seatOne(presC>-1?row[presC]:null);
+        const yr=parseInt(yC>-1?row[yC]:NaN,10);
+        if(!pres||!Number.isFinite(yr)) continue; // skip blank/footer rows
+        seats.add(pres);
+        const type=(tyC>-1&&String(row[tyC]||"").trim())||"Unspecified"; typeSet.add(type);
+        const prog=String(prC>-1?row[prC]:"").toLowerCase();
+        const partHeard=/part|reserv/.test(prog), progressed=partHeard||/progress/.test(prog);
+        const streamA=/^(y|yes|true|1)$/i.test(String(saC>-1?row[saC]:"").trim());
+        let bench=beC>-1?seatsFrom(row[beC]):[]; if(!bench.includes(pres)) bench=[pres,...bench];
+        const recusals=reC>-1?seatsFrom(row[reC]):[];
+        bench.forEach(s=>seats.add(s)); recusals.forEach(s=>seats.add(s));
+        const id=String(idC>-1?(row[idC]==null?"":row[idC]):"").trim()||(`HC-A/${yr}/${String(++auto).padStart(3,"0")}`);
+        cases.push({id,year:yr,type,presiding:pres,bench,streamA,progressed,partHeard,recusals});
+      }
+      if(!cases.length){alert("No case rows found. Expected a 'Presiding Section' (B1–B11) and 'Year' on each row.");return;}
+      if(!confirm(`Import ${cases.length} cases (per-case detail) into the register?\n\nThis replaces the current cases.`)) return;
+      [...seats].filter(s=>s>=1).sort((a,b)=>a-b).forEach(s=>{if(!S.justices.some(j=>j.seat===s))S.justices.push({seat:s,name:`Hon. Justice — B${s}`,active:true});});
+      typeSet.forEach(t=>{if(t&&!S.types.includes(t))S.types.push(t);});
+      S.cases=cases; recomputeYears(); renderAll(); switchTab("cases");
+      alert(`Imported ${cases.length} cases with full detail (type, progress, recusals).`);
+      return;
+    }
+
+    // ---- count-matrix format (sections × years) ----
+    const yearCols=[]; header.forEach((h,i)=>{ if(/^\d{4}$/.test(h)) yearCols.push({i,year:+h}); });
+    if(!yearCols.length){alert("Couldn't recognise the sheet. Use the per-case template (Case ID, Year, Presiding Section…) or a section×year count matrix.");return;}
+    const cases=[]; const seatsSeen=new Set(); let total=0;
+    for(let r2=1;r2<rows.length;r2++){
+      const row=rows[r2]||[]; const label=String(row[0]==null?"":row[0]).trim();
+      const m=label.match(/^B\s*(\d+)$/i); if(!m) continue;
+      const seat=+m[1]; seatsSeen.add(seat);
+      yearCols.forEach(({i,year})=>{
+        const v=row[i]; const n=(typeof v==="number")?Math.round(v):parseInt(v,10);
+        if(n>0){ for(let k=0;k<n;k++){ total++;
+          cases.push({id:`B${seat}/${year}/${String(k+1).padStart(3,"0")}`,year,type:"Unspecified",
+            presiding:seat,bench:[seat],streamA:false,progressed:false,partHeard:false,recusals:[]});
+        }}
+      });
+    }
+    if(!total){alert("No case counts found. Expected rows like B1, B2 … with numbers under each year.");return;}
+    if(!confirm(`Import ${total} cases across ${yearCols.length} years (${Math.min(...yearCols.map(y=>y.year))}–${Math.max(...yearCols.map(y=>y.year))}) into the register?\n\nThis replaces the current cases.`)) return;
+    [...seatsSeen].sort((a,b)=>a-b).forEach(s=>{ if(!S.justices.some(j=>j.seat===s)) S.justices.push({seat:s,name:`Hon. Justice — B${s}`,active:true}); });
+    if(!S.types.includes("Unspecified")) S.types.unshift("Unspecified");
+    S.cases=cases; recomputeYears(); renderAll(); switchTab("cases");
+    alert(`Imported ${total} cases. Class/type is "Unspecified" (the file has only counts) — edit cases to set types, recusals, or progress where needed.`);
+  }catch(e){alert("Could not read that spreadsheet: "+e.message);}};
+  r.readAsArrayBuffer(file);
+}
+function shareLink(){
+  try{
+    const b64=btoa(unescape(encodeURIComponent(JSON.stringify(S))));
+    const url=location.origin+location.pathname+"#data="+b64;
+    navigator.clipboard?.writeText(url).then(
+      ()=>alert("Share link copied to clipboard.\n\nAnyone who opens it loads this exact data snapshot (read-and-edit, on their own device)."),
+      ()=>prompt("Copy this share link:",url));
+  }catch(e){alert("Could not build a share link: "+e.message);}
+}
+function printReport(){
+  const res=allocate();
+  const active=S.justices.filter(j=>j.active).map(j=>j.seat).sort((a,b)=>a-b);
+  const set=S.settings;
+  const round=set.round==="ceil"?"rounded up":set.round==="floor"?"rounded down":"nearest";
+  // matrix
+  let mh=`<tr><th>Section</th>`+YEARS.map(y=>`<th>${y}<br>cap ${res[y].cap}</th>`).join("")+`<th>Total</th></tr>`;
+  let mb=active.map(s=>{let rt=0;const cells=YEARS.map(y=>{const v=res[y].load[s];rt+=v;return `<td>${v}</td>`;}).join("");
+    return `<tr><th style="text-align:left">B${s} — ${esc(nameOf(s))}</th>${cells}<td>${rt}</td></tr>`;}).join("");
+  // per-section assignments
+  const bySec={};active.forEach(s=>bySec[s]=[]);const un=[];
+  YEARS.forEach(y=>res[y].place.forEach(p=>{if(p.rule==="STRA"||p.to==null)return;(bySec[p.to]=bySec[p.to]||[]).push({...p,year:y});}));
+  YEARS.forEach(y=>res[y].unassigned.forEach(u=>un.push({...u,year:y})));
+  const groups=active.map(s=>{
+    const list=(bySec[s]||[]).sort((a,b)=>a.year-b.year||(a.c.id<b.c.id?-1:1));
+    const rows=list.map(p=>`<tr><td>${p.c.id}</td><td>${p.year}</td><td>${esc(p.c.type)}</td><td>${esc(p.label)}${p.moved?` (from B${p.from})`:""}</td></tr>`).join("");
+    return `<div class="pr-grp"><div class="pr-gh">B${s} — ${esc(nameOf(s))} &middot; ${list.length} case${list.length===1?"":"s"}</div>`+
+      (list.length?`<table class="pr"><tr><th>Case</th><th>Year</th><th>Class / type</th><th>Placed by</th></tr>${rows}</table>`:`<div style="font-size:11px;color:#777">— none —</div>`)+`</div>`;
+  }).join("");
+  const unBlock=un.length?`<div class="pr-sec"><h3 class="pr-un">Unassignable (${un.length})</h3><table class="pr"><tr><th>Case</th><th>Year</th><th>Reason</th></tr>${un.map(u=>`<tr><td>${u.c.id}</td><td>${u.year}</td><td>${u.reason}</td></tr>`).join("")}</table></div>`:"";
+  $("printArea").innerHTML=`
+    <div class="pr-head"><h1>High Court of the Maldives — Backlog Allocation</h1>
+      <div class="pr-sub">Cohort 2021 &amp; earlier &middot; ${active.length} sections</div></div>
+    <div class="pr-meta">Generated ${new Date().toLocaleString()} &middot; Cap = cases ÷ active sections (${round}), absolute ceiling &middot;
+      ${set.triage==="on"?"Stream A triaged out":"full cohort"} &middot;
+      ${set.progressFirst==="on"?"progress overrides type rotation":"type rotation overrides progress"}</div>
+    <div class="pr-sec pr-matrix"><h3>Allocation matrix · section × year</h3>
+      <table class="pr">${mh}${mb}</table></div>
+    <div class="pr-sec"><h3>Assignments by section</h3>${groups}</div>
+    ${unBlock}`;
+  window.print();
+}
+
+/* ===================== modals ===================== */
+function openModal(html){$("modal").innerHTML=html;$("overlay").classList.add("show");}
+function closeModal(){$("overlay").classList.remove("show");}
+$("overlay").addEventListener("click",e=>{if(e.target===$("overlay"))closeModal();});
+
+function seatOptions(sel){return S.justices.filter(j=>j.active||j.seat===sel).sort((a,b)=>a.seat-b.seat).map(j=>`<option value="${j.seat}" ${j.seat===sel?"selected":""}>B${j.seat} — ${esc(j.name)}</option>`).join("");}
+function opt(list,sel){return list.map(v=>`<option ${v===sel?"selected":""}>${esc(v)}</option>`).join("");}
+
+function caseModal(c){
+  const isNew=!c;
+  c=c||{id:"",year:2021,type:S.types[0],presiding:S.justices[0].seat,bench:[S.justices[0].seat],streamA:false,progressed:false,partHeard:false,recusals:[]};
+  const klass=c.partHeard?"partheard":c.progressed?"progressed":"movable";
+  const rec=c.recusals||[];
+  const recBoxes=S.justices.filter(j=>j.active).sort((a,b)=>a.seat-b.seat).map(j=>
+    `<label class="recbox"><input type="checkbox" value="${j.seat}" ${rec.includes(j.seat)?"checked":""}> B${j.seat}</label>`).join("");
+  openModal(`
+    <h3>${isNew?"Add case":"Edit case"}</h3>
+    <div class="msub">${isNew?"New entry in the case register":esc(c.id)}</div>
+    <div class="frow">
+      <div class="field"><label>Case ID</label><input id="f_id" value="${esc(c.id)}" placeholder="HC-A/2021/000"></div>
+      <div class="field"><label>Year</label><select id="f_year">${opt(YEARS.map(String),String(c.year))}</select></div>
+    </div>
+    <div class="field"><label>Class / type</label>
+      <input id="f_type" list="typelist" value="${esc(c.type)}" placeholder="Type a class or pick an existing one" autocomplete="off">
+      <datalist id="typelist">${S.types.map(t=>`<option value="${esc(t)}"></option>`).join("")}</datalist>
+    </div>
+    <div class="field"><label>Presiding justice</label><select id="f_pres">${seatOptions(c.presiding)}</select></div>
+    <div class="field"><label>Progress (P1 lock)</label><select id="f_prog">
+      <option value="movable" ${klass==="movable"?"selected":""}>Movable — no substantial work</option>
+      <option value="progressed" ${klass==="progressed"?"selected":""}>Progressed — locked (P1)</option>
+      <option value="partheard" ${klass==="partheard"?"selected":""}>Part-heard / reserved — locked (P1)</option>
+    </select></div>
+    <div class="field inline"><input type="checkbox" id="f_stra" ${c.streamA?"checked":""}><label for="f_stra">Stream A — disposable on directions (deadweight)</label></div>
+    <div class="field"><label>Recusals / conflicts — barred sections</label>
+      <div id="f_recwrap" class="recwrap">${recBoxes}</div></div>
+    <div class="modal-act">
+      <button class="btn ghost" data-action="close">Cancel</button>
+      <button class="btn" data-action="save-case" data-id="${esc(c.id)}" data-new="${isNew}">${isNew?"Add case":"Save"}</button>
+    </div>`);
+}
+function saveCase(oldId,isNew){
+  const id=$("f_id").value.trim()||`HC-A/${$("f_year").value}/${String(Math.floor(Math.random()*900)+100)}`;
+  const prog=$("f_prog").value;
+  const type=$("f_type").value.trim()||S.types[0];
+  if(type&&!S.types.includes(type)) S.types.push(type);   // remember new class/type for the dropdown
+  const recusals=[...document.querySelectorAll("#f_recwrap input:checked")].map(x=>+x.value);
+  const obj={id,year:+$("f_year").value,type,
+    presiding:+$("f_pres").value,streamA:$("f_stra").checked,
+    progressed:prog==="progressed"||prog==="partheard",partHeard:prog==="partheard",
+    recusals};
+  if(isNew){obj.bench=[obj.presiding];S.cases.push(obj);}
+  else{const ex=S.cases.find(c=>c.id===oldId);obj.bench=ex.bench.includes(obj.presiding)?ex.bench:[obj.presiding,...ex.bench.slice(1)];Object.assign(ex,obj);}
+  closeModal();renderAll();
+}
+
+function justiceModal(seat){
+  const isNew=seat===null;
+  const j=isNew?{seat:Math.max(0,...S.justices.map(x=>x.seat))+1,name:"",active:true}:S.justices.find(x=>x.seat===seat);
+  openModal(`
+    <h3>${isNew?"Add justice":"Edit justice"}</h3>
+    <div class="msub">B${j.seat}</div>
+    <div class="frow">
+      <div class="field"><label>Section number</label><input id="f_seat" type="number" min="1" value="${j.seat}" ${isNew?"":"readonly"}></div>
+      <div class="field"><label>Status</label><select id="f_active"><option value="1" ${j.active?"selected":""}>Active</option><option value="0" ${j.active?"":"selected"}>Inactive</option></select></div>
+    </div>
+    <div class="field"><label>Justice name</label><input id="f_name" value="${esc(j.name)}" placeholder="Hon. Justice ..."></div>
+    <div class="modal-act">
+      <button class="btn ghost" data-action="close">Cancel</button>
+      <button class="btn" data-action="save-justice" data-id="${j.seat}" data-new="${isNew}">${isNew?"Add":"Save"}</button>
+    </div>`);
+}
+function saveJustice(seat,isNew){
+  const newSeat=+$("f_seat").value,name=$("f_name").value.trim()||`Hon. Justice — B${newSeat}`,active=$("f_active").value==="1";
+  if(isNew){if(S.justices.some(j=>j.seat===newSeat)){alert("Section B"+newSeat+" already exists.");return;}S.justices.push({seat:newSeat,name,active});}
+  else{const j=S.justices.find(x=>x.seat===seat);j.name=name;j.active=active;}
+  closeModal();renderAll();
+}
+
+function userModal(uid){
+  const isNew=!uid;const u=isNew?{id:"",name:"",username:"",role:"viewer"}:S.users.find(x=>x.id===uid);
+  openModal(`
+    <h3>${isNew?"Add user":"Edit user"}</h3>
+    <div class="msub">${isNew?"Grant access and a role":esc(u.username)}</div>
+    <div class="field"><label>Full name</label><input id="f_uname" value="${esc(u.name)}"></div>
+    <div class="frow">
+      <div class="field"><label>Username</label><input id="f_uuser" value="${esc(u.username)}"></div>
+      <div class="field"><label>Role</label><select id="f_urole">${ROLES.map(r=>`<option value="${r}" ${r===u.role?"selected":""}>${r} — ${ROLE_DESC[r]}</option>`).join("")}</select></div>
+    </div>
+    <div class="modal-act">
+      <button class="btn ghost" data-action="close">Cancel</button>
+      <button class="btn" data-action="save-user" data-id="${esc(u.id)}" data-new="${isNew}">${isNew?"Add user":"Save"}</button>
+    </div>`);
+}
+function saveUser(uid,isNew){
+  const name=$("f_uname").value.trim()||"Unnamed user",username=$("f_uuser").value.trim()||"user"+Date.now(),role=$("f_urole").value;
+  if(isNew)S.users.push({id:"u"+Date.now(),name,username,role});
+  else{const u=S.users.find(x=>x.id===uid);u.name=name;u.username=username;u.role=role;}
+  closeModal();renderAll();
+}
+
+/* ===================== event delegation ===================== */
+document.addEventListener("click",e=>{
+  const b=e.target.closest("[data-action]");if(!b)return;
+  const a=b.dataset.action,id=b.dataset.id,isNew=b.dataset.new==="true";
+  switch(a){
+    case"close":return closeModal();
+    case"add-case":if(can("cases"))caseModal(null);break;
+    case"edit-case":if(can("cases"))caseModal(S.cases.find(c=>c.id===id));break;
+    case"save-case":saveCase(id,isNew);break;
+    case"del-case":if(can("cases")&&confirm("Delete "+id+"?")){S.cases=S.cases.filter(c=>c.id!==id);renderAll();}break;
+    case"add-justice":if(can("justices"))justiceModal(null);break;
+    case"edit-justice":if(can("justices"))justiceModal(+id);break;
+    case"save-justice":saveJustice(+id,isNew);break;
+    case"del-justice":if(can("justices")&&confirm("Remove section B"+id+"? Cases presided by this section will be reassigned by the engine.")){S.justices=S.justices.filter(j=>j.seat!==+id);renderAll();}break;
+    case"add-user":if(can("users"))userModal(null);break;
+    case"edit-user":if(can("users"))userModal(id);break;
+    case"save-user":saveUser(id,isNew);break;
+    case"del-user":if(can("users")&&S.users.length>1&&confirm("Delete this user?")){if(id===S.currentUserId)S.currentUserId=S.users.find(u=>u.id!==id).id;S.users=S.users.filter(u=>u.id!==id);renderAll();}break;
+    case"reset-demo":if(can("settings")&&confirm("Reset all data to the demo seed?")){S=seedState();switchTab("alloc");renderAll();}break;
+    case"export":exportData();break;
+    case"share":shareLink();break;
+    case"print":printReport();break;
+    case"import":if(can("settings"))$("importFile").click();break;
+    case"import-xlsx":if(can("cases"))$("xlsxFile").click();break;
+    case"add-target":if(can("cases"))targetModal(null);break;
+    case"edit-target":if(can("cases"))targetModal(S.targets.find(t=>t.id===id));break;
+    case"save-target":saveTarget(id,isNew);break;
+    case"del-target":if(can("cases")&&confirm("Delete this target?")){S.targets=S.targets.filter(t=>t.id!==id);renderAll();}break;
+    case"add-prior-year":if(can("cases")){const m=S.priorYears.length?Math.max(...S.priorYears):new Date().getFullYear()-1;S.priorYears.push(m+1);S.priorYears.sort((a,b)=>a-b);renderAll();}break;
+    case"add-prior-year-earlier":if(can("cases")){const m=S.priorYears.length?Math.min(...S.priorYears):new Date().getFullYear();S.priorYears.unshift(m-1);S.priorYears.sort((a,b)=>a-b);renderAll();}break;
+    case"remove-prior-year":if(can("cases")&&S.priorYears.length>1){const m=Math.max(...S.priorYears);S.priorYears=S.priorYears.filter(y=>y!==m);renderAll();}break;
+  }
+});
+// tabs
+function switchTab(t){tab=t;document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x.dataset.tab===t));
+  document.querySelectorAll("[data-panel]").forEach(p=>p.classList.toggle("hide",p.dataset.panel!==t));}
+$("tabs").addEventListener("click",e=>{const t=e.target.closest(".tab");if(t)switchTab(t.dataset.tab);});
+// session + filters + settings
+$("userSwitch").addEventListener("change",e=>{S.currentUserId=e.target.value;renderAll();});
+["caseSearch","caseYear"].forEach(id=>$(id).addEventListener("input",renderCases));
+["resSearch","resYear"].forEach(id=>$(id).addEventListener("input",renderResults));
+$("distYear").addEventListener("change",renderDistribution);
+document.addEventListener("change",e=>{const el=e.target.closest(".priorin");if(!el||!can("cases"))return;
+  const j=S.justices.find(x=>x.seat===+el.dataset.seat);
+  if(j){ if(!j.priorYears)j.priorYears={}; j.priorYears[+el.dataset.year]=Math.max(0,parseInt(el.value||"0",10)||0); renderAll(); }});
+[["setRound","round"],["setTriage","triage"],["setProgressFirst","progressFirst"]].forEach(([id,key])=>{
+  $(id).addEventListener("click",e=>{const btn=e.target.closest("button");if(!btn||!can("settings"))return;S.settings[key]=btn.dataset.v;renderAll();});
+});
+$("setProgress").addEventListener("input",e=>{if(can("settings")){S.settings.progress=e.target.value;persist();}});
+$("importFile").addEventListener("change",e=>{const f=e.target.files[0];if(f)importData(f);e.target.value="";});
+$("xlsxFile").addEventListener("change",e=>{const f=e.target.files[0];if(f)importXlsx(f);e.target.value="";});
+document.addEventListener("change",e=>{const el=e.target.closest(".tprog");if(!el||!can("cases"))return;
+  const t=S.targets.find(x=>x.id===el.dataset.id); if(t){t.progress=Math.max(0,parseInt(el.value||"0",10)||0);renderAll();}});
+// gate Import button by role
+function syncImportBtn(){const b=$("importBtn");if(b)b.disabled=!can("settings");}
+// year filter options (rebuilt to match the current data span)
+function syncYearFilters(){
+  ["caseYear","resYear"].forEach(id=>{const sel=$(id);if(!sel)return;const cur=sel.value;
+    sel.innerHTML='<option value="">All years</option>'+YEARS.map(y=>`<option value="${y}">${y}</option>`).join("");
+    if([...sel.options].some(o=>o.value===cur)) sel.value=cur;
+  });
+}
+
+renderAll();
+</script>
+</body>
+</html>
